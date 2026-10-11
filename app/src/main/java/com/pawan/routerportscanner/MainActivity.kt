@@ -6,6 +6,7 @@ import android.text.InputType
 import android.view.Gravity
 import android.widget.*
 import java.net.Inet4Address
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.Socket
@@ -68,7 +69,7 @@ class MainActivity : Activity() {
                     status.text = "Found ${found.size} responding device${if (found.size == 1) "" else "s"}. Tap an IP to select it."
                     found.forEach { host ->
                         devices.addView(Button(this).apply {
-                            text = if (host == mine) "$host  •  This phone" else host
+                            text = "$host  •  ${identifyDevice(host, mine, base)}"
                             setOnClickListener {
                                 ip.setText(host)
                                 status.text = "Selected $host. Tap Security Scan Selected IP."
@@ -140,6 +141,25 @@ class MainActivity : Activity() {
                 .distinct().sortedBy { it.substringAfterLast('.').toIntOrNull() ?: 999 }
         } finally {
             pool.shutdownNow()
+        }
+    }
+
+    private fun identifyDevice(host: String, mine: String, base: String): String {
+        if (host == mine) return "This phone"
+        if (host == "$base.1") return "Likely router / gateway"
+
+        val hostname = try {
+            val resolved = InetAddress.getByName(host).canonicalHostName
+            if (resolved != host && !resolved.equals("localhost", true)) resolved else null
+        } catch (_: Exception) { null }
+        if (!hostname.isNullOrBlank()) return "Hostname: $hostname"
+
+        return when {
+            isPortOpen(host, 3389, 220) -> "Likely Windows PC"
+            isPortOpen(host, 445, 220) || isPortOpen(host, 139, 220) -> "Likely computer / NAS"
+            isPortOpen(host, 554, 220) -> "Likely camera / media device"
+            isPortOpen(host, 80, 220) || isPortOpen(host, 443, 220) || isPortOpen(host, 8080, 220) -> "Likely web-managed device"
+            else -> "Unknown device"
         }
     }
 
